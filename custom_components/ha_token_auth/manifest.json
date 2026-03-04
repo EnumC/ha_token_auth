@@ -1,0 +1,16 @@
+{
+  "domain": "ha_token_auth",
+  "name": "HA Token Auth",
+  "codeowners": [
+    "@EnumC"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "auth"
+  ],
+  "documentation": "https://github.com/EnumC/ha_token_auth",
+  "iot_class": "local_push",
+  "requirements": [],
+  "version": "0.1.0"
+}
+

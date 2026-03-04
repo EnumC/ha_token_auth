@@ -1,0 +1,45 @@
+{
+  "login": {
+    "abort": {
+      "invalid_login": "Invalid or missing auth-token URL parameter."
+    },
+    "error": {
+      "invalid_login": "Invalid or missing auth-token URL parameter."
+    }
+  },
+  "config": {
+    "error": {
+      "duplicate_token": "A token can only be assigned to one user."
+    },
+    "abort": {
+      "single_instance_allowed": "Only a single configuration is allowed.",
+      "no_user_available": "No active users are available for token mapping."
+    },
+    "step": {
+      "user": {
+        "title": "HA Token Auth",
+        "description": "Configure URL token authentication. Each active user has a token field. Leave a field empty to disable token login for that user.",
+        "data": {
+          "allow_bypass_login": "Allow fallback to other login providers"
+        }
+      }
+    }
+  },
+  "options": {
+    "error": {
+      "duplicate_token": "A token can only be assigned to one user."
+    },
+    "abort": {
+      "no_user_available": "No active users are available for token mapping."
+    },
+    "step": {
+      "init": {
+        "title": "HA Token Auth options",
+        "description": "Set one token per user. Leave a token empty to disable token login for that user.",
+        "data": {
+          "allow_bypass_login": "Allow fallback to other login providers"
+        }
+      }
+    }
+  }
+}
