@@ -29,21 +29,25 @@ async def _async_get_user_options(hass) -> dict[str, str]:
     }
 
 
-def _merged_token_user_map(
-    merged: dict[str, Any], user_options: dict[str, str]
+def _effective_token_user_map(
+    data: dict[str, Any], options: dict[str, Any], user_options: dict[str, str]
 ) -> list[dict[str, str]]:
-    """Return normalized token/user mappings, with legacy fallback conversion."""
-    mapped = normalize_token_user_map(merged.get(CONF_TOKEN_USER_MAP, []))
-    if mapped:
-        return mapped
+    """Return token/user mappings with options first, then legacy fallback."""
+    if CONF_TOKEN_USER_MAP in options:
+        return normalize_token_user_map(options.get(CONF_TOKEN_USER_MAP, []))
+    if options:
+        # Options were explicitly saved, so missing token_user_map means no tokens.
+        return []
+    if CONF_TOKEN_USER_MAP in data:
+        return normalize_token_user_map(data.get(CONF_TOKEN_USER_MAP, []))
 
-    legacy_user_id = merged.get(CONF_USER_ID)
+    legacy_user_id = data.get(CONF_USER_ID)
     if legacy_user_id not in user_options:
         return []
 
     return [
         {"token": token, "user_id": legacy_user_id}
-        for token in normalize_allowlist(merged.get(CONF_ALLOWLIST, []))
+        for token in normalize_allowlist(data.get(CONF_ALLOWLIST, []))
     ]
 
 
@@ -110,7 +114,11 @@ def _form_schema(
     schema: dict[Any, Any] = {}
 
     for label, user_id in user_fields.items():
-        schema[vol.Optional(label, default=defaults_by_user_id.get(user_id, ""))] = str
+        field_kwargs: dict[str, Any] = {}
+        if suggested := defaults_by_user_id.get(user_id):
+            field_kwargs["description"] = {"suggested_value": suggested}
+
+        schema[vol.Optional(label, **field_kwargs)] = str
 
     schema[
         vol.Required(
@@ -176,8 +184,10 @@ class HATokenAuthOptionsFlow(config_entries.OptionsFlow):
         if not user_options:
             return self.async_abort(reason="no_user_available")
 
-        merged = {**self._config_entry.data, **self._config_entry.options}
-        token_user_map = _merged_token_user_map(merged, user_options)
+        data = self._config_entry.data
+        options = self._config_entry.options
+        merged = {**data, **options}
+        token_user_map = _effective_token_user_map(data, options, user_options)
 
         user_fields = _user_fields(user_options)
         defaults_by_user_id = _defaults_by_user_id(token_user_map)

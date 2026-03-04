@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+import logging
 import os.path
 from typing import Any
 
@@ -25,6 +26,9 @@ from .const import (
 )
 from .helpers import normalize_allowlist, normalize_token_user_map
 from .provider import HATokenAuthProvider
+
+_LOGGER = logging.getLogger(__name__)
+_FORWARD_SCRIPT_URL = "/ha_token_auth/forward-token.js"
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -80,19 +84,30 @@ def _entry_to_config(entry: ConfigEntry) -> dict[str, Any]:
     """Merge config entry data and options into runtime config."""
     merged = {**entry.data, **entry.options}
 
-    token_user_map = normalize_token_user_map(merged.get(CONF_TOKEN_USER_MAP, []))
-    if token_user_map:
-        token_lookup = {entry["token"]: entry["user_id"] for entry in token_user_map}
+    if CONF_TOKEN_USER_MAP in entry.options:
+        token_entries = normalize_token_user_map(
+            entry.options.get(CONF_TOKEN_USER_MAP, [])
+        )
+    elif entry.options:
+        # Options were explicitly saved, so missing token_user_map means no tokens.
+        token_entries = []
+    elif CONF_TOKEN_USER_MAP in entry.data:
+        token_entries = normalize_token_user_map(
+            entry.data.get(CONF_TOKEN_USER_MAP, [])
+        )
     else:
         legacy_user_id = merged.get(CONF_USER_ID)
-        token_lookup = (
-            {
-                token: legacy_user_id
+        token_entries = (
+            [
+                {"token": token, "user_id": legacy_user_id}
                 for token in normalize_allowlist(merged.get(CONF_ALLOWLIST, []))
-            }
+            ]
             if legacy_user_id
-            else {}
+            else []
         )
+    token_lookup = {
+        token_entry["token"]: token_entry["user_id"] for token_entry in token_entries
+    }
 
     return {
         CONF_ALLOW_BYPASS_LOGIN: merged.get(
@@ -104,16 +119,32 @@ def _entry_to_config(entry: ConfigEntry) -> dict[str, Any]:
 
 async def _register_token_forward_script(hass: HomeAssistant) -> None:
     """Register frontend script that forwards URL auth-token to login flow."""
-    await hass.http.async_register_static_paths(
-        [
-            StaticPathConfig(
-                "/ha_token_auth/forward-token.js",
-                os.path.join(os.path.dirname(__file__), "forward-token.js"),
-                True,
+    if not _is_route_registered(hass, _FORWARD_SCRIPT_URL):
+        try:
+            await hass.http.async_register_static_paths(
+                [
+                    StaticPathConfig(
+                        _FORWARD_SCRIPT_URL,
+                        os.path.join(os.path.dirname(__file__), "forward-token.js"),
+                        True,
+                    )
+                ]
             )
-        ]
-    )
-    add_extra_js_url(hass, "/ha_token_auth/forward-token.js")
+        except RuntimeError as err:
+            # Reload can race with existing routes; ignore duplicate registration.
+            if "already registered" not in str(err):
+                raise
+            _LOGGER.debug("Static path already registered for %s", _FORWARD_SCRIPT_URL)
+    add_extra_js_url(hass, _FORWARD_SCRIPT_URL)
+
+
+def _is_route_registered(hass: HomeAssistant, url_path: str) -> bool:
+    """Return True if the given URL path already exists in the HTTP router."""
+    for resource in hass.http.app.router.resources():
+        canonical = getattr(resource, "canonical", None)
+        if canonical == url_path:
+            return True
+    return False
 
 
 def _inject_provider(hass: HomeAssistant) -> None:

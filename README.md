@@ -7,6 +7,9 @@ It reads an `auth-token` query parameter from the authorize/login request and, w
 It's useful for kiosk-like environment where you can specify a predefined URL.
 Also useful as a bookmark on Tesla vehicles to always be logged in to HA.
 
+Keep in mind that this is inherently less secure than other auth methods.
+For example, your auth token will get logged in your browser history as it is being passed as a query param! Instead of allowing auth token on your admin account, consider creating a read only user for this purpose.
+
 ## What it does
 
 - Adds a custom auth provider: `ha_token_auth`
