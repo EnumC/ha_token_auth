@@ -53,6 +53,11 @@ Example URL:
 
 If the token is mapped to a user, login is completed for that user.
 
+## Troubleshooting
+
+If the authorize page shows `Login aborted:` and a `Start over` button, the
+`auth-token` is missing or invalid.
+
 ## Security notes
 
 - Treat tokens like passwords.
