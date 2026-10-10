@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections import OrderedDict
 import logging
 import os.path
+import sys
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
@@ -14,6 +16,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
+    AUTH_TOKEN_QUERY_PARAM,
     CONF_ALLOW_BYPASS_LOGIN,
     CONF_ALLOWLIST,
     CONF_TOKEN_USER_MAP,
@@ -147,18 +150,49 @@ def _is_route_registered(hass: HomeAssistant, url_path: str) -> bool:
     return False
 
 
+_OIDC_DOMAIN = "auth_oidc"
+_OIDC_PAGE_MODULE = "custom_components.auth_oidc.endpoints.injected_auth_page"
+
+
 def _inject_provider(hass: HomeAssistant) -> None:
-    """Inject provider at the start of provider list."""
+    """Inject provider first, or right after auth_oidc which must stay first."""
     provider = HATokenAuthProvider(hass, hass.auth._store, {"id": DOMAIN})
-    providers = OrderedDict()
-    providers[(provider.type, provider.id)] = provider
+    existing = [
+        (key, existing_provider)
+        for key, existing_provider in hass.auth._providers.items()
+        if existing_provider.type != DOMAIN
+    ]
+    index = 1 if existing and existing[0][1].type == _OIDC_DOMAIN else 0
+    existing.insert(index, ((provider.type, provider.id), provider))
+    hass.auth._providers = OrderedDict(existing)
+    _patch_oidc_redirect()
 
-    for key, existing_provider in hass.auth._providers.items():
-        if existing_provider.type == DOMAIN:
-            continue
-        providers[key] = existing_provider
 
-    hass.auth._providers = providers
+def _request_has_token(req: Any) -> bool:
+    """Return True if an authorize request carries an auth token."""
+    if req.query.get(AUTH_TOKEN_QUERY_PARAM):
+        return True
+    redirect_uri = req.query.get("redirect_uri")
+    if not redirect_uri:
+        return False
+    return bool(parse_qs(urlparse(redirect_uri).query).get(AUTH_TOKEN_QUERY_PARAM))
+
+
+def _patch_oidc_redirect() -> None:
+    """Keep auth_oidc from redirecting token logins to its SSO page."""
+    module = sys.modules.get(_OIDC_PAGE_MODULE)
+    page = getattr(module, "OIDCInjectedAuthPage", None)
+    original = getattr(page, "_should_do_oidc_redirect", None)
+    if original is None or getattr(original, "_ha_token_auth", False):
+        return
+
+    def _should_do_oidc_redirect(self: Any, req: Any) -> bool:
+        if _request_has_token(req):
+            return False
+        return original(self, req)
+
+    _should_do_oidc_redirect._ha_token_auth = True
+    page._should_do_oidc_redirect = _should_do_oidc_redirect
 
 
 def _remove_provider(hass: HomeAssistant) -> None:

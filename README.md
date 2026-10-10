@@ -56,6 +56,9 @@ Example URL:
 
 If the token is mapped to a user, login is completed for that user.
 
+Works alongside [hass-oidc-auth](https://github.com/christiaangoossens/hass-oidc-auth):
+OIDC stays the first provider, and URLs with `auth-token` skip its SSO redirect.
+
 ## Troubleshooting
 
 If the authorize page shows `Login aborted:` and a `Start over` button, the
